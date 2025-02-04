@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City Advisor</title>
+    <script src="https://cdn.plot.ly/plotly-2.20.0.min.js"></script>
+    <script>
+    async function getAIResponse(event) {
+    event.preventDefault();
+
+    const userInput = document.getElementById("userInput").value.trim();
+    if (!userInput) return;
+
+    // Get reference to the message list
+    const messageList = document.querySelector(".message-list");
+
+    // Display user message in the chat
+    const userMessage = document.createElement("li");
+    userMessage.className = "message user-message";
+    userMessage.textContent = userInput;
+    messageList.appendChild(userMessage);
+
+    // Add a break (horizontal rule) after the user message
+    const userMessageBreak = document.createElement("hr");
+    userMessageBreak.className = "message-break";
+    messageList.appendChild(userMessageBreak);
+
+    // Clear input field
+    document.getElementById("userInput").value = "";
+
+    // Scroll to the latest message
+    messageList.scrollTop = messageList.scrollHeight;
+
+    // Add loading indicator
+    const loadingMessage = document.createElement("li");
+    loadingMessage.className = "message loading-message";
+    loadingMessage.textContent = "Thinking...";
+    messageList.appendChild(loadingMessage);
+
+    try {
+        const response = await fetch("/get_response", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: `user_input=${encodeURIComponent(userInput)}`,
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            const aiResponse = result.response;
+
+            // Remove loading message
+            loadingMessage.remove();
+
+            // Split the AI response into parts (HTML tags and text separately)
+            const parts = aiResponse.match(/(<[^>]+>|[^<]+)/g);
+
+            let i = 0;
+
+            // Function for typing effect
+            function typeWriter() {
+                if (i < parts.length) {
+                    const part = parts[i];
+
+                    if (part.startsWith("<li>") && part.endsWith("</li>")) {
+                        // Append list item as a whole
+                        const aiMessage = document.createElement("li");
+                        aiMessage.className = "message ai-message";
+                        aiMessage.innerHTML = part;
+                        messageList.appendChild(aiMessage);
+                    } else if (part.startsWith("<") && part.endsWith(">")) {
+                        // Append other HTML tags directly
+                        const aiMessage = document.createElement("li");
+                        aiMessage.className = "message ai-message";
+                        aiMessage.innerHTML = part;
+                        messageList.appendChild(aiMessage);
+                    } else {
+                        // Append plain text with typing effect
+                        let j = 0;
+                        const aiMessage = document.createElement("li");
+                        aiMessage.className = "message ai-message";
+                        messageList.appendChild(aiMessage);
+
+                        function typeCharacter() {
+                            if (j < part.length) {
+                                aiMessage.textContent += part.charAt(j);
+                                j++;
+                                setTimeout(typeCharacter, 10); // Adjust typing speed
+                            } else {
+                                i++; // Move to the next part after completing current text
+                                typeWriter();
+                            }
+                        }
+                        typeCharacter();
+                        return; // Exit typeWriter until typeCharacter is complete
+                    }
+
+                    i++;
+                    setTimeout(typeWriter, 50); // Delay before processing the next part
+                } else {
+                    // Add a break (horizontal rule) after the AI message
+                    const aiMessageBreak = document.createElement("hr");
+                    aiMessageBreak.className = "message-break";
+                    messageList.appendChild(aiMessageBreak);
+                }
+            }
+
+            typeWriter();
+        } else {
+            // Remove loading message and display error
+            loadingMessage.remove();
+            const errorMessage = document.createElement("li");
+            errorMessage.className = "message error-message";
+            errorMessage.textContent = `Error: ${result.error}`;
+            messageList.appendChild(errorMessage);
+
+            // Add a break after the error message
+            const errorBreak = document.createElement("hr");
+            errorBreak.className = "message-break";
+            messageList.appendChild(errorBreak);
+        }
+    } catch (error) {
+        // Remove loading message and display error
+        loadingMessage.remove();
+        const errorMessage = document.createElement("li");
+        errorMessage.className = "message error-message";
+        errorMessage.textContent = `Error: ${error.message}`;
+        messageList.appendChild(errorMessage);
+
+        // Add a break after the error message
+        const errorBreak = document.createElement("hr");
+        errorBreak.className = "message-break";
+        messageList.appendChild(errorBreak);
+    }
+
+    // Scroll to the latest message
+    messageList.scrollTop = messageList.scrollHeight;
+}
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1 style="font-size: 50px; margin-bottom: -10px;">Find out how your county is doing</h1>
+        <p style="font-size: 14px;">Data insights from all around Germany!</p>
+    </header>
+    <main>
+
+        <div class="dropdown">
+            <select id="city-select">
+                <option value=""> Select County </option>
+            </select>
+            <ul class="menu">
+                <li class="active" onclick="showView('view1', this)">County Info</li>
+                <li onclick="showView('view2', this)">Map</li>
+                <li onclick="showView('view3', this)">Comparison</li>
+              </ul>
+            </div>
+
+        
+        
+        <div id="view1" class="view active">
+        
+                <div id="info-container" class="info">
+                    <h2 id="city-title"></h2>
+                    <div id="loading-indicator" style="display: none;">Loading...</div>
+                    <div id="ai-response"></div>
+                    
+                    <h1>Main Indexes</h1>
+                    <p id="city-economy-employment" class="indexes"></p>
+                    <div id="plot-economy" style="width: 800px; height: 300px; margin-bottom: 20px; margin-top: -90px;"></div>
+                    <p id="city-quality-of-life-index" class="indexes"></p>
+                    <div id="plot-quality" style="width: 800px; height: 300px; margin-bottom: 20px; margin-top: -90px; margin-left: -20px;"></div>
+                    <p id="city-inequality-and-sustainability-index" class="indexes"></p>
+                    <div id="plot-inequality" style="width: 800px; height: 300px; margin-bottom: 20px; margin-top: -90px; margin-left: -20px;"></div>
+                    <p id="city-eco-friendliness-index" class="indexes"></p>
+                    <div id="plot-eco" style="width: 800px; height: 300px; margin-bottom: 20px; margin-top: -90px; margin-left: -20px;"></div>
+                  
+                    <h1>Sub Indexes</h1>
+
+                    
+                    <p id="city-economy-index" class="indexes"></p>
+                    
+                    <p id="city-employment-index" class="indexes"></p>
+                    <div id="plot-employment" style="width: 800px; height: 300px; margin-bottom: 20px; margin-top: -90px;"></div>
+
+                    <p id="city-distance-to-amenities-index" class="indexes"></p>
+                    <div id="plot-distance-to" style="width: 800px; height: 300px; margin-bottom: 20px; margin-top: -90px; margin-left: -20px;"></div>
+                    <p id="city-social-benefits-index" class="indexes"></p>
+                    <div id="plot-social" style="width: 800px; height: 300px; margin-bottom: 20px; margin-top: -90px; margin-left: -20px;"></div>
+
+                    <p id="city-social-inequality-index" class="indexes"></p>
+                    <div id="plot-social-ineq" style="width: 800px; height: 300px; margin-bottom: 20px; margin-top: -90px; margin-left: -20px;"></div>
+                    <p id="city-gender-inequality-index" class="indexes"></p>
+                    <div id="plot-gender" style="width: 800px; height: 300px; margin-bottom: 20px; margin-top: -90px; margin-left: -20px;"></div>
+                    <p id="city-internationality-index" class="indexes"></p>
+                    <div id="plot-international" style="width: 800px; height: 300px; margin-bottom: 20px; margin-top: -90px; margin-left: -20px;"></div>
+                    
+                  </div>
+        </div>
+        
+        <div id="view2" class="view">
+            <div class='tableauPlaceholder' id='viz1737537530515' style='position: relative; width: 1169px; height: 827px;'><noscript><a href='#'><img alt='Dashboard 2 ' src='https:&#47;&#47;public.tableau.com&#47;static&#47;images&#47;P6&#47;P6QZD5FM3&#47;1_rss.png' style='border: none' /></a></noscript><object class='tableauViz'  style='display:none;'><param name='host_url' value='https%3A%2F%2Fpublic.tableau.com%2F' /> <param name='embed_code_version' value='3' /> <param name='path' value='shared&#47;P6QZD5FM3' /> <param name='toolbar' value='yes' /><param name='static_image' value='https:&#47;&#47;public.tableau.com&#47;static&#47;images&#47;P6&#47;P6QZD5FM3&#47;1.png' /> <param name='animate_transition' value='yes' /><param name='display_static_image' value='yes' /><param name='display_spinner' value='yes' /><param name='display_overlay' value='yes' /><param name='display_count' value='yes' /><param name='language' value='en-GB' /><param name='filter' value='publish=yes' /></object></div>                <script type='text/javascript'>                    var divElement = document.getElementById('viz1737537530515');                    var vizElement = divElement.getElementsByTagName('object')[0];                    if ( divElement.offsetWidth > 800 ) { vizElement.style.width='1000px';vizElement.style.height='827px';} else if ( divElement.offsetWidth > 500 ) { vizElement.style.width='1000px';vizElement.style.height='827px';} else { vizElement.style.width='100%';vizElement.style.height='727px';}                     var scriptElement = document.createElement('script');                    scriptElement.src = 'https://public.tableau.com/javascripts/api/viz_v1.js';                    vizElement.parentNode.insertBefore(scriptElement, vizElement);                </script>
+        </div>
+
+        <div id="view3" class="view">
+            <div class='tableauPlaceholder' id='viz1737537163825' style='position: relative; width: 1169px; height: 827px;'><noscript><a href='#'><img alt='Dashboard 1 ' src='https:&#47;&#47;public.tableau.com&#47;static&#47;images&#47;ma&#47;mappymap2&#47;Dashboard1&#47;1_rss.png' style='border: none' /></a></noscript><object class='tableauViz'  style='display:none;'><param name='host_url' value='https%3A%2F%2Fpublic.tableau.com%2F' /> <param name='embed_code_version' value='3' /> <param name='site_root' value='' /><param name='name' value='mappymap2&#47;Dashboard1' /><param name='tabs' value='no' /><param name='toolbar' value='yes' /><param name='static_image' value='https:&#47;&#47;public.tableau.com&#47;static&#47;images&#47;ma&#47;mappymap2&#47;Dashboard1&#47;1.png' /> <param name='animate_transition' value='yes' /><param name='display_static_image' value='yes' /><param name='display_spinner' value='yes' /><param name='display_overlay' value='yes' /><param name='display_count' value='yes' /><param name='language' value='en-GB' /><param name='filter' value='publish=yes' /></object></div>                <script type='text/javascript'>                    var divElement = document.getElementById('viz1737537163825');                    var vizElement = divElement.getElementsByTagName('object')[0];                    if ( divElement.offsetWidth > 800 ) { vizElement.style.width='1169px';vizElement.style.height='854px';} else if ( divElement.offsetWidth > 500 ) { vizElement.style.width='1169px';vizElement.style.height='854px';} else { vizElement.style.width='100%';vizElement.style.height='877px';}                     var scriptElement = document.createElement('script');                    scriptElement.src = 'https://public.tableau.com/javascripts/api/viz_v1.js';                    vizElement.parentNode.insertBefore(scriptElement, vizElement);                </script>
+        </div>
+
+        <div class="card" id="chat-card">
+            <div class="chat-header">Chat</div>
+              <div class="chat-window">
+                <div id="response" style="margin-top: 20px;"></div>
+                <ul class="message-list"></ul>
+              </div>
+                <form class="chat-input" onsubmit="getAIResponse(event)">
+                        <input type="text" id="userInput" name="user_input" placeholder="Ask something" required>
+                        <button id="btn-AI" type="submit">></button>
+                  </form>
+            </div>
+        
+            <button id="toggle-btn">AI Chat</button>
+        
+        <script>
+            const cityData = {{ city_data|safe }};
+
+// Populate the dropdown menu
+const citySelect = document.getElementById('city-select');
+for (const cityKey in cityData) {
+    const option = document.createElement('option');
+    option.value = cityKey;
+    option.textContent = cityData[cityKey].Name;
+    citySelect.appendChild(option);
+}
+
+// Handle city selection
+citySelect.addEventListener('change', async function () {
+    const selectedCityKey = this.value;
+    const infoContainer = document.getElementById('info-container');
+    const cityTitle = document.getElementById('city-title');
+    const cityEmploymentIndex = document.getElementById('city-employment-index');
+    const citySocialBenefitsIndex = document.getElementById('city-social-benefits-index');
+    const cityDistanceToAmenitiesIndex = document.getElementById('city-distance-to-amenities-index');
+    const cityGenderInequalityIndex = document.getElementById('city-gender-inequality-index');
+    const citySocialInequalityIndex = document.getElementById('city-social-inequality-index');
+    const cityInternationalityIndex = document.getElementById('city-internationality-index');
+    const cityEconomyAndEmploymentIndex = document.getElementById('city-economy-employment');
+    const cityQualityOfLifeIndex = document.getElementById('city-quality-of-life-index');
+    const cityInequalityAndSustainabilityIndex = document.getElementById('city-inequality-and-sustainability-index');
+    const cityEcoFriendlinessIndex = document.getElementById('city-eco-friendliness-index');
+    const aiResponseContainer = document.getElementById('ai-response');
+    const loadingIndicator = document.getElementById('loading-indicator');
+
+    if (selectedCityKey) {
+        // Show loading indicator
+        loadingIndicator.style.display = 'block';
+
+        // Update city title and rank based on the selected city
+        const selectedCityData = cityData[selectedCityKey];
+        cityTitle.textContent = `${selectedCityData.Name}`;
+        cityEmploymentIndex.textContent = `Employment Index: ${selectedCityData.employment_index}`;
+        citySocialBenefitsIndex.textContent = `Social Benefits Index: ${selectedCityData.social_benefits_index}`;
+        cityDistanceToAmenitiesIndex.textContent = `Distance to Amenities Index: ${selectedCityData.distance_to_ammenities_index}`;
+        cityGenderInequalityIndex.textContent = `Gender Inequality Index: ${selectedCityData.gender_inequality_index}`;
+        citySocialInequalityIndex.textContent = `Social Inequality Index: ${selectedCityData.social_inequality_index}`;
+        cityInternationalityIndex.textContent = `Internationality Index: ${selectedCityData.internationality_index}`;
+        cityEconomyAndEmploymentIndex.textContent = `Economy and Employment Index: ${selectedCityData.economy_and_employment_index}`;
+        cityQualityOfLifeIndex.textContent = `Quality of Life Index: ${selectedCityData.quality_of_life_index}`;
+        cityInequalityAndSustainabilityIndex.textContent = `Inequality and Sustainability Index: ${selectedCityData.inequality_and_sustainability_index}`;
+        cityEcoFriendlinessIndex.textContent = `Ecofriendliness Index: ${selectedCityData.eco_friendliness_index}`;
+        infoContainer.style.display = 'block';
+
+        // Prepare data for individual boxplots
+        const columns = [
+            { key: "economy_and_employment_index", label: "Economic Success Index", divId: "plot-economy" },
+            { key: "quality_of_life_index", label: "Quality of Life Index", divId: "plot-quality" },
+            { key: "inequality_and_sustainability_index", label: "Inequality and Sustainability Index", divId: "plot-inequality" },
+            { key: "social_benefits_index", label: "Social Benefits Index", divId: "plot-social" },
+            { key: "gender_inequality_index", label: "Gender Inequality Index", divId: "plot-gender" },
+            { key: "internationality_index", label: "Internationality Index", divId: "plot-international" },
+            { key: "social_inequality_index", label: "Social Inequality Index", divId: "plot-social-ineq" },
+            { key: "employment_index", label: "Employment Index", divId: "plot-employment" },
+            { key: "distance_to_ammenities_index", label: "Distance to Ammenities Index", divId: "plot-distance-to" },
+            { key: "eco_friendliness_index", label: "Ecofriendliness Index", divId: "plot-eco" },
+        ];
+
+        // Create a boxplot for each column
+        columns.forEach((column) => {
+            // Extract values for the boxplot
+            const values = Object.values(cityData).map(city => city[column.key]);
+            const selectedValue = selectedCityData[column.key];
+
+            // Create the boxplot trace
+            const trace = {
+                x: values, // Horizontal boxplot
+                type: "box",
+                boxpoints: "outliers",
+                orientation: "h", // Horizontal orientation
+                name: "",
+                hoverinfo: "skip",
+            };
+
+            // Create a scatter trace for the selected city's value
+            const highlightTrace = {
+                x: [selectedValue], // The specific value to highlight
+                y: [0], // Matches the implicit position of the boxplot
+                textposition: "right center",
+                marker: { color: "red", size: 10 },
+                name: "you",
+                hoverinfo: "skip",
+                yaxis: "y2", // Use a secondary y-axis for better alignment
+            };
+
+            const layout = {
+                yaxis: {
+                    title: "",
+                    showticklabels: false, // Hide ticks if unnecessary
+                    domain: [0, 1], // Align with the full height
+                },
+                yaxis2: {
+                    title: "",
+                    showticklabels: false, // Hide ticks for the secondary axis
+                    overlaying: "y", // Overlay on the primary y-axis
+                    side: "right", // Position secondary axis on the right
+                },
+                showlegend:false,
+                plot_bgcolor: "rgba(0,0,0,0)", // Transparent plot area
+                paper_bgcolor: "rgba(0,0,0,0)", // Transparent entire background
+            };
+
+            // Configuration to hide the toolbar
+            const config = {
+                displayModeBar: false, // Hide the toolbar
+                responsive: true, // Optional: make the plot responsive
+            };
+
+            // Render the plot in the specific div
+            Plotly.newPlot(column.divId, [trace, highlightTrace], layout);
+        });
+
+        // Call the AI endpoint with the selected city data
+        try {
+            const response = await fetch("/get_response_auto", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    city: selectedCityData.Name,
+                    values: {
+                        employment_index: selectedCityData.employment_index,
+                        social_benefits_index: selectedCityData.social_benefits_index,
+                        distance_to_ammenities_index: selectedCityData.distance_to_ammenities_index,
+                        gender_inequality_index: selectedCityData.gender_inequality_index,
+                        social_inequality_index: selectedCityData.social_inequality_index,
+                        internationality_index: selectedCityData.internationality_index,
+                        economy_and_employment_index: selectedCityData.economy_and_employment_index,
+                        quality_of_life_index: selectedCityData.quality_of_life_index,
+                        inequality_and_sustainability_index: selectedCityData.inequality_and_sustainability_index,
+                        eco_friendliness_index: selectedCityData.eco_friendliness_index,
+                    },
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.response) {
+                // Display the AI's response
+                aiResponseContainer.innerHTML = data.response;
+                aiResponseContainer.style.display = 'block';
+            } else {
+                // Display an error message if something goes wrong
+                aiResponseContainer.textContent = "Error: " + data.error;
+                aiResponseContainer.style.display = 'block';
+            }
+        } catch (error) {
+            console.error("Error fetching AI response:", error);
+        } finally {
+            // Hide loading indicator
+            loadingIndicator.style.display = 'none';
+        }
+    } else {
+        // Hide info container and AI response if no city is selected
+        infoContainer.style.display = 'none';
+        aiResponseContainer.style.display = 'none';
+        loadingIndicator.style.display = 'none';
+    }
+});
+
+        function showView(viewId, menuItem) {
+            // Hide all views
+            const views = document.querySelectorAll('.view');
+            views.forEach(view => view.classList.remove('active'));
+    
+            // Show the selected view
+            document.getElementById(viewId).classList.add('active');
+    
+            // Remove 'active' class from all menu items
+            const menuItems = document.querySelectorAll('.menu li');
+            menuItems.forEach(item => item.classList.remove('active'));
+    
+            // Add 'active' class to the clicked menu item
+            menuItem.classList.add('active');
+        }
+
+
+        const toggleButton = document.getElementById("toggle-btn");
+        const chatCard = document.getElementById("chat-card");
+
+        toggleButton.addEventListener("click", () => {
+            if (chatCard.style.display === "none" || chatCard.style.display === "") {
+                chatCard.style.display = "block"; // Show the card
+            } else {
+                chatCard.style.display = "none"; // Hide the card
+            }
+        });
+        </script>
+      </main>
+    <footer>
+        <p>&copy; 2025 City Helper</p>
+        <p>Forward College - The Data Detectives</p>
+    </footer>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
+
