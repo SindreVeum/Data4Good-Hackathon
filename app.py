@@ -6,7 +6,7 @@ import json
 
 app = Flask(__name__)
 
-openai.api_key = "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"
+openai.api_key = "[YOUR API KEY]"
 
 @app.route('/')
 def index():
